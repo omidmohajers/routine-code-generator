@@ -1,0 +1,148 @@
+﻿<%-- 
+Name: Start
+Author: Omid Mohajer
+Description: easy way to create mvvm wpf project
+--%>
+<%@ CodeTemplate Language="C#" TargetLanguage="Text" Description="easy way to create mvvm wpf project" CompilerVersion="v3.5" %>
+<%@ Assembly Name="System" %>
+<%@ Assembly Name="SchemaExplorer" %>
+<%@ Assembly Name="CodeSmith.Engine" %>
+<%@ Import Namespace="System.IO" %>
+
+<%@ Register Name="businessobject" Template="businessobject.cst" %>
+<%@ Register Name="Repository" Template="Repository.cst" %>
+
+
+
+<%@ Property Category="1.Database" Name="SourceDatabase" Optional="False"
+    Type="SchemaExplorer.DatabaseSchema" 
+    Description="دیتابیسی که می خواهید پروژه شما از طریق آن ساخته شود انتخاب کنید" %>
+<%@ Property Name="Location" Type="System.String"
+    Default="Warehouse" Optional="False" Category="2.Solution"
+    Description="مسیری که برنامه در آن ساخته می شود"
+    Editor="System.Windows.Forms.Design.FolderNameEditor, System.Design, Version=1.0.5000.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" %>
+<%@ Property Name="NameSpace" Type="System.String"
+    Default="" Optional="False" Category="2.Solution"
+    Description="نام برنامه ای که ساخته می شود" %>
+
+
+
+<% BEGIN(); %>
+The  Solution has been created at <%= Location %>.
+
+<script runat="template">
+
+    public void BEGIN()
+    {
+        // Make sure Location is FullPath
+        Location = Path.GetFullPath(Location);
+
+
+        // Data
+        string dataDir = Path.Combine( Location , "Entities");
+        if(!Directory.Exists(dataDir))
+            Directory.CreateDirectory(dataDir);
+        
+        CreateEntitiesFromTables(dataDir);
+        
+        // Model
+        string modelDir = Path.Combine( Location , "Repository");
+        if(!Directory.Exists(modelDir))
+            Directory.CreateDirectory(modelDir);
+        
+        CreateRepositoriesFromTables(modelDir);
+        
+        
+//        List<SolutionItem> solutionItems = new List<SolutionItem>();
+//        ProjectBuilderSettings pbs = CreateProjectBuilderSettings();
+//
+//        // Create Data Project
+//        DataProjectCreator dataProjectCreator = new DataProjectCreator(pbs);
+//        dataProjectCreator.CreateProject(this.DataProjectName);
+//        solutionItems.Add(dataProjectCreator.SolutionItem);
+//
+//        // Create UI Project
+//
+//        // Create Solution
+//        string solutionPath = CreateSolution(solutionItems);
+//
+//        // Launch Visual Studio
+//        if(LaunchVisualStudio)
+//            LaunchVisualStudioWithSolution(solutionPath);
+    }
+    
+        private void CreateEntitiesFromTables(string dir){
+         foreach(TableSchema tbl in SourceDatabase.Tables){    
+            businessobject obj = this.Create<businessobject>(); 
+            obj.SourceTable = tbl;
+            obj.NameSpace = NameSpace + "Entities";
+            obj.RenderToFile(Path.Combine( dir , GetClassName(tbl) + ".cs"),true);
+         }
+        }
+        
+        private void CreateRepositoriesFromTables(string dir){
+         foreach(TableSchema tbl in SourceDatabase.Tables){    
+            Repository obj = this.Create<Repository>(); 
+            obj.SourceTable = tbl;
+            obj.NameSpace = NameSpace + "Repositories";
+            obj.RenderToFile(Path.Combine( dir , GetClassName(tbl) + "Repository.cs"),true);
+         }
+        }
+
+         public string GetClassName(TableSchema table)
+            {
+            	string name = "";
+            	if (table.Name.EndsWith("s"))
+            	{
+            		name= table.Name.Substring(0, table.Name.Length - 1);
+            	}
+            	else if (table.Name.EndsWith("ies"))
+            	{
+            		name= table.Name.Substring(0, table.Name.Length - 3)+"y";
+            	}
+            	else
+            	{
+            		name= table.Name;
+            	}
+            	if(name.StartsWith("PC_"))
+            		name= name.Substring(3,name.Length-3);
+            	return name;	
+            }
+
+    private bool DirectoriesAlreadyExists
+    {
+        get
+        {
+            return Directory.Exists(Location);
+        }
+    }
+    private string AlreadyExistsMessage
+    {
+        get
+        {
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            sb.AppendLine("It seems that a quick start already exists in specified directory:");
+            sb.AppendLine(Location);
+            sb.AppendLine("Please delete existing data or selected a different directory.");
+            return sb.ToString();
+        }
+    }
+    
+
+    private void OnSourceDatabaseChanged(object sender, EventArgs e)
+    {
+        if (SourceDatabase == null)
+            return;
+
+        string name = StringUtil.ToPascalCase(SourceDatabase.Database.Name);
+
+        if(string.IsNullOrEmpty(NameSpace))
+            NameSpace = name;
+
+        if (string.IsNullOrEmpty(Location))
+            Location = Path.Combine(
+                CodeSmith.Engine.Configuration.Instance.CodeSmithTemplatesDirectory,
+                Path.Combine("MVVM", name));
+    }
+</script>
+

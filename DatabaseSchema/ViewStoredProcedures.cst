@@ -1,0 +1,743 @@
+﻿<%------------------------------------------------------------------------------------------
+* Author: Eric J. Smith 
+* Description: This template will generate standard CRUD stored procedures for a given 
+*   database table.
+------------------------------------------------------------------------------------------%>
+<%@ CodeTemplate Debug="True" Language="C#" Inherits="CodeSmith.BaseTemplates.SqlCodeTemplate" TargetLanguage="T-SQL"
+	Description="Generates standard CRUD procedures based on a database table schema." %>
+<%-- Context --%>
+<%@ Property Name="SourceView" Type="SchemaExplorer.ViewSchema" Category="1. Context"
+	Description="View that the stored procedures should be based on." %>
+<%-- Options --%>
+<%@ Property Name="IncludeDropStatements" Type="System.Boolean" Default="True" Category="2. Options"
+	Description="If true drop statements will be generated to drop existing stored procedures." %>
+<%@ Property Name="IsolationLevel" Type="TransactionIsolationLevelEnum" Default="ReadCommitted" Category="2. Options"
+	Description="Isolation level to use in the generated procedures." %>
+<%@ Property Name="ProcedurePrefix" Type="System.String" Default="usp_" Category="2. Options"
+	Description="Prefix to use for all generated procedure names." %>
+<%@ Property Name="ViewPrefix" Type="System.String" Default="tbl_" Category="2. Options"
+	Description="If this prefix is found at the start of a View name, it will be stripped off." %>
+<%@ Property Name="AutoExecuteScript" Type="System.Boolean" Default="False" Category="2. Options"
+	Description="Whether or not to immediately execute the script on the target database." %>
+<%@ Property Name="OrderByExpression" Type="System.String" Default="" Optional="True" Category="2. Options"
+	Description="If supplied, this expression will be used to apply an order to the results on SELECT statements." %>
+<%@ Property Name="ExcludedColumns" Type="StringCollection" Default="" Optional="True" Category="2. Options"
+	Description="If supplied, any columns in this list will be excluded from all stored procedures unless the column is part of the primary key. (* is treated as a wildcard)" %>
+<%@ Property Name="ReadOnlyColumns" Type="StringCollection" Default="" Optional="True" Category="2. Options"
+	Description="If supplied, any columns in this list will be treated as read only. (* is treated as a wildcard)" %>
+<%-- Procedure Types --%>
+<%@ Property Name="IncludeInsert" Type="System.Boolean" Default="True" Category="3. Procedure Types"
+	Description="If true an INSERT procedure will be generated." %>
+<%@ Property Name="IncludeUpdate" Type="System.Boolean" Default="True" Category="3. Procedure Types"
+	Description="If true an UPDATE procedure will be generated." %>
+<%@ Property Name="IncludeInsertUpdate" Type="System.Boolean" Default="True" Category="3. Procedure Types"
+	Description="If true an INSERT/UPDATE procedure will be generated." %>
+<%@ Property Name="IncludeDelete" Type="System.Boolean" Default="True" Category="3. Procedure Types"
+	Description="If true a DELETE procedure will be generated." %>
+<%@ Property Name="IncludeSelect" Type="System.Boolean" Default="True" Category="3. Procedure Types"
+	Description="If true a SELECT procedure will be generated." %>
+<%@ Property Name="IncludeSelectAll" Type="System.Boolean" Default="True" Category="3. Procedure Types"
+	Description="If true a SELECT all procedure will be generated." %>
+<%@ Property Name="IncludeSelectPaged" Type="System.Boolean" Default="True" Category="3. Procedure Types"
+	Description="If true a SELECT procedure will be generated that allows for server side paging." %>
+<%@ Property Name="IncludeSelectByForeignKey" Type="System.Boolean" Default="True" Category="3. Procedure Types"
+	Description="If true a SELECT procedure will be generated for each foreign key." %>
+<%@ Property Name="IncludeSelectByIndex" Type="System.Boolean" Default="True" Category="3. Procedure Types"
+	Description="If true a SELECT procedure will be generated for each View index." %>
+<%@ Property Name="IncludeSelectDynamic" Type="System.Boolean" Default="True" Category="3. Procedure Types"
+	Description="If true a SELECT procedure will be generated that allows a dynamic WHERE condition to be used." %>
+<%@ Property Name="IncludeDeleteByForeignKey" Type="System.Boolean" Default="True" Category="3. Procedure Types"
+	Description="If true a DELETE procedure will be generated for each foreign key." %>
+<%@ Property Name="IncludeDeleteByIndex" Type="System.Boolean" Default="True" Category="3. Procedure Types"
+	Description="If true a DELETE procedure will be generated for each View index." %>
+<%@ Property Name="IncludeDeleteDynamic" Type="System.Boolean" Default="True" Category="3. Procedure Types"
+	Description="If true a DELETE procedure will be generated that allows a dynamic WHERE condition to be used." %>
+<%-- Assembly References --%>
+<%@ Assembly Name="SchemaExplorer" %>
+<%@ Assembly Name="CodeSmith.BaseTemplates" %>
+<%@ Assembly Name="CodeSmith.CustomProperties" %>
+<%@ Assembly Name="System.Data" %>
+<%-- Namespace Imports --%>
+<%@ Import Namespace="SchemaExplorer" %>
+<%@ Import Namespace="CodeSmith.CustomProperties" %>
+<%@ Import Namespace="CodeSmith.BaseTemplates" %>
+<%@ Import Namespace="System.Data" %>
+<%@ Import Namespace="System.Text.RegularExpressions" %>
+<%
+this.Progress.MaximumValue = 13;
+this.Progress.Step = 1;
+
+
+
+// generate drop statements
+if (IncludeDropStatements)
+{
+	Response.WriteLine("--region Drop Existing Procedures");
+	Response.WriteLine("");
+	
+	if (IncludeInsert) GenerateDropStatement(GetInsertProcedureName());
+	if (IncludeUpdate) GenerateDropStatement(GetUpdateProcedureName());
+	if (IncludeInsertUpdate) GenerateDropStatement(GetInsertUpdateProcedureName());
+	if (IncludeDelete)
+	{
+		GenerateDropStatement(GetDeleteProcedureName());
+	}
+	if (IncludeDeleteDynamic) GenerateDropStatement(GetDeleteDynamicProcedureName());
+	if (IncludeSelect)
+	{
+		GenerateDropStatement(GetSelectProcedureName());
+	}
+	if (IncludeSelectDynamic) GenerateDropStatement(GetSelectDynamicProcedureName());
+	if (IncludeSelectAll) GenerateDropStatement(GetSelectAllProcedureName());
+
+	
+	Response.WriteLine("--endregion");
+	Response.WriteLine("");
+	Response.WriteLine("GO");
+	Response.WriteLine("");
+	
+	this.Progress.PerformStep();
+}
+%>
+<%------------------------------------------------------------------------------------------
+*
+* Select Procedure
+*
+------------------------------------------------------------------------------------------%>
+<%
+if (IncludeSelect)
+{
+	// this is to keep a select by procedure with only the primary key columns from being generated
+//	_generatedProcedureNames.Add(GetSelectByProcedureName(SourceView.PrimaryKey.MemberColumns));
+	
+	GenerateProcedureHeader(GetSelectProcedureName());
+%>
+
+CREATE PROCEDURE <%= GetSelectProcedureName() %>
+    @ID BIGINT
+AS
+
+SET NOCOUNT ON
+<% GenerateSetTransactionIsolationLevelStatement(IsolationLevel); %>
+
+SELECT
+	<% GenerateColumns(SourceView.Columns, 1); %>
+FROM
+	<%= GetViewOwner() %>[<%= SourceView.Name %>]
+WHERE
+	[ID] = @ID
+
+<%
+	GenerateProcedureFooter(GetSelectProcedureName());
+	this.Progress.PerformStep();
+}
+%>
+<%------------------------------------------------------------------------------------------
+*
+* Select Dynamic Procedure
+*
+------------------------------------------------------------------------------------------%>
+<%
+if (IncludeSelectDynamic)
+{
+	GenerateProcedureHeader(GetSelectDynamicProcedureName());
+%>
+
+CREATE PROCEDURE <%= GetSelectDynamicProcedureName() %>
+	@WhereCondition nvarchar(500),
+	@OrderByExpression nvarchar(250) = NULL
+AS
+
+SET NOCOUNT ON
+<% GenerateSetTransactionIsolationLevelStatement(IsolationLevel); %>
+
+DECLARE @SQL nvarchar(3250)
+
+SET @SQL = '
+SELECT
+	<% GenerateColumns(SourceView.Columns, 1); %>
+FROM
+	<%= GetViewOwner() %>[<%= SourceView.Name %>]
+WHERE
+	' + @WhereCondition
+
+IF @OrderByExpression IS NOT NULL AND LEN(@OrderByExpression) > 0
+BEGIN
+	SET @SQL = @SQL + '
+ORDER BY
+	' + @OrderByExpression
+END
+<% if (OrderByExpression != null && OrderByExpression.Trim().Length > 0) { %>
+ELSE
+BEGIN
+	SET @SQL = @SQL + '
+ORDER BY
+	<%= OrderByExpression %>'
+END
+<% } %>
+
+EXEC sp_executesql @SQL
+
+<%
+	GenerateProcedureFooter(GetSelectDynamicProcedureName());
+	this.Progress.PerformStep();
+}
+%>
+<%------------------------------------------------------------------------------------------
+*
+* Select All Procedure
+*
+------------------------------------------------------------------------------------------%>
+<%
+if (IncludeSelectAll)
+{
+	GenerateProcedureHeader(GetSelectAllProcedureName());
+%>
+
+CREATE PROCEDURE <%= GetSelectAllProcedureName() %>
+AS
+
+SET NOCOUNT ON
+<% GenerateSetTransactionIsolationLevelStatement(IsolationLevel); %>
+
+SELECT
+	<% GenerateColumns(SourceView.Columns, 1); %>
+FROM
+	<%= GetViewOwner() %>[<%= SourceView.Name %>]
+<% GenerateOrderByClause(); %>
+
+<%
+	GenerateProcedureFooter(GetSelectAllProcedureName());
+	this.Progress.PerformStep();
+}
+%>
+<%------------------------------------------------------------------------------------------
+*
+* Select Paged Procedure
+*
+------------------------------------------------------------------------------------------%>
+<%
+if (IncludeSelectPaged)
+{
+	GenerateProcedureHeader(GetSelectPagedProcedureName());
+%>
+
+CREATE PROCEDURE <%= GetSelectPagedProcedureName() %>
+AS
+
+SET NOCOUNT ON
+<% GenerateSetTransactionIsolationLevelStatement(IsolationLevel); %>
+
+SELECT
+	<% GenerateColumns(SourceView.Columns, 1); %>
+FROM
+	<%= GetViewOwner() %>[<%= SourceView.Name %>]
+<% GenerateOrderByClause(); %>
+
+<%
+	GenerateProcedureFooter(GetSelectPagedProcedureName());
+	this.Progress.PerformStep();
+}
+%>
+<script runat="template">
+#region Member Variables
+private StringCollection _droppedProcedureNames = new StringCollection();
+private StringCollection _generatedProcedureNames = new StringCollection();
+#endregion
+
+#region Isolation Level
+public enum TransactionIsolationLevelEnum
+{
+	ReadCommitted,
+	ReadUncommitted,
+	RepeatableRead,
+	Serializable
+}
+
+public void GenerateSetTransactionIsolationLevelStatement(TransactionIsolationLevelEnum isolationLevel)
+{
+	Response.Write("SET TRANSACTION ISOLATION LEVEL ");
+	
+	switch (isolationLevel)
+	{
+		case TransactionIsolationLevelEnum.ReadUncommitted:
+		{
+			Response.WriteLine("READ UNCOMMITTED");
+			break;
+		}
+		case TransactionIsolationLevelEnum.RepeatableRead:
+		{
+			Response.WriteLine("REPEATABLE READ");
+			break;
+		}
+		case TransactionIsolationLevelEnum.Serializable:
+		{
+			Response.WriteLine("SERIALIZABLE");
+			break;
+		}
+		default:
+		{
+			Response.WriteLine("READ COMMITTED");
+			break;
+		}
+	}
+}
+#endregion
+
+#region Code Generation Helpers
+public string GetViewOwner()
+{
+	return GetViewOwner(true);
+}
+
+public string GetViewOwner(bool includeDot)
+{
+	if (SourceView.Owner.Length > 0)
+	{
+		if (includeDot)
+		{
+			return "[" + SourceView.Owner + "].";
+		}
+		else
+		{
+			return "[" + SourceView.Owner + "]";
+		}
+	}
+	else
+	{
+		return "";
+	}
+}
+
+public void GenerateDropStatement(string procedureName)
+{
+	// check to see if this procedure has already been dropped.
+	if (!_droppedProcedureNames.Contains(procedureName))
+	{
+		Response.WriteLine("IF OBJECT_ID(N'{0}') IS NOT NULL", procedureName);
+		GenerateIndent(1);
+		Response.WriteLine("DROP PROCEDURE {0}", procedureName);
+		Response.WriteLine("");
+		
+		// add this procedure to the list of dropped procedures
+		_droppedProcedureNames.Add(procedureName);
+	}
+}
+
+public void GenerateProcedureHeader(string procedureName)
+{
+	Response.WriteLine("--region {0}", procedureName);
+	Response.WriteLine("");
+	Response.WriteLine("------------------------------------------------------------------------------------------------------------------------");
+	Response.WriteLine("-- Generated By:   {0} using CodeSmith {1}", System.Environment.UserName, typeof(CodeTemplate).Assembly.GetName().Version.ToString());
+	Response.WriteLine("-- Template:       {0}", this.CodeTemplateInfo.FileName);
+	Response.WriteLine("-- Procedure Name: {0}", procedureName);
+	Response.WriteLine("-- Date Generated: {0}", DateTime.Now.ToLongDateString());
+	Response.WriteLine("------------------------------------------------------------------------------------------------------------------------");
+}
+
+public void GenerateProcedureFooter(string procedureName)
+{
+	Response.WriteLine("--endregion");
+	Response.WriteLine("");
+	Response.WriteLine("GO");
+	Response.WriteLine("");
+}
+
+public void GenerateIndent(int indentLevel)
+{
+    for (int i = 0; i < indentLevel; i++)
+	{
+		Response.Write('\t');
+	}
+}
+
+public void GenerateParameter(ViewColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateParameter(column, indentLevel, isFirst, isLast, false);
+}
+
+public void GenerateParameter(ViewColumnSchema column, int indentLevel, bool isFirst, bool isLast, bool isOutput)
+{
+	GenerateIndent(indentLevel);
+	Response.Write(GetSqlParameterStatement(column, isOutput));
+	if(column.AllowDBNull)
+	{
+		Response.Write(" = NULL");	
+	}
+
+	if (!isLast) Response.Write(",");
+	if (indentLevel >= 0)
+	{
+		Response.WriteLine("");
+	}
+	else if (!isLast)
+	{
+		Response.Write(" ");
+	}
+}
+
+public void GenerateParameters(ViewColumnSchemaCollection columns, int indentLevel)
+{
+	GenerateParameters(columns, indentLevel, false);
+}
+
+public void GenerateParameters(ViewColumnSchemaCollection columns, int indentLevel, bool includeTrailingComma)
+{
+	ViewColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateParameter(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1 && !includeTrailingComma);
+	}
+}
+
+public void GenerateColumn(ViewColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateIndent(indentLevel);
+	Response.Write("[");
+	Response.Write(column.Name);
+	Response.Write("]");
+	if (!isLast) Response.Write(",");
+	if (indentLevel >= 0)
+	{
+		Response.WriteLine("");
+	}
+	else if (!isLast)
+	{
+		Response.Write(" ");
+	}
+}
+
+public void GenerateColumns(ViewColumnSchemaCollection columns, int indentLevel)
+{
+	ViewColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateColumn(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+
+public void GenerateUpdate(ViewColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateIndent(indentLevel);
+	Response.Write("[");
+	Response.Write(column.Name);
+	Response.Write("] = @");
+	Response.Write(column.Name);
+	if (!isLast) Response.Write(",");
+	if (indentLevel >= 0)
+	{
+		Response.WriteLine("");
+	}
+	else if (!isLast)
+	{
+		Response.Write(" ");
+	}
+}
+
+public void GenerateUpdates(ViewColumnSchemaCollection columns, int indentLevel)
+{
+	ViewColumnSchemaCollection filteredColumns = FilterReadOnlyAndExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateUpdate(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+
+public void GenerateCondition(ViewColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateIndent(indentLevel);
+	if (!isFirst) Response.Write("AND ");
+	Response.Write("[");
+	Response.Write(column.Name);
+	Response.Write("] = @");
+	Response.Write(column.Name);
+	if (indentLevel >= 0)
+	{
+		Response.WriteLine("");
+	}
+	else if (!isLast)
+	{
+		Response.Write(" ");
+	}
+}
+
+public void GenerateConditions(ViewColumnSchemaCollection columns, int indentLevel)
+{
+	ViewColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateCondition(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+
+public void GenerateVariable(ViewColumnSchema column, int indentLevel, bool isFirst, bool isLast)
+{
+	GenerateIndent(indentLevel);
+	Response.Write("@");
+	Response.Write(column.Name);
+	if (!isLast) Response.Write(",");
+	if (indentLevel >= 0)
+	{
+		Response.WriteLine("");
+	}
+	else if (!isLast)
+	{
+		Response.Write(" ");
+	}
+}
+
+public void GenerateVariables(ViewColumnSchemaCollection columns, int indentLevel)
+{
+	ViewColumnSchemaCollection filteredColumns = FilterExcludedColumns(columns);
+	for (int i = 0; i < filteredColumns.Count; i++)
+	{
+		GenerateVariable(filteredColumns[i], indentLevel, i == 0, i == filteredColumns.Count - 1);
+	}
+}
+
+public void GenerateOrderByClause()
+{
+	if (OrderByExpression != null && OrderByExpression.Trim().Length > 0)
+	{
+		Response.WriteLine("ORDER BY");
+		GenerateIndent(1);
+		Response.WriteLine(OrderByExpression);
+	}
+}
+
+public ViewColumnSchemaCollection FilterReadOnlyColumns(ViewColumnSchemaCollection columns)
+{
+	ViewColumnSchemaCollection filteredColumns = new ViewColumnSchemaCollection();
+	
+	for (int i = 0; i < columns.Count; i++)
+	{
+		if (!ColumnIsReadOnly(columns[i])) filteredColumns.Add(columns[i]);
+	}
+	
+	return filteredColumns;
+}
+
+public ViewColumnSchemaCollection FilterExcludedColumns(ViewColumnSchemaCollection columns)
+{
+	ViewColumnSchemaCollection filteredColumns = new ViewColumnSchemaCollection();
+	
+	for (int i = 0; i < columns.Count; i++)
+	{
+		if (!ColumnIsExcluded(columns[i])) filteredColumns.Add(columns[i]);
+	}
+	
+	return filteredColumns;
+}
+
+public ViewColumnSchemaCollection FilterReadOnlyAndExcludedColumns(ViewColumnSchemaCollection columns)
+{
+	ViewColumnSchemaCollection filteredColumns = new ViewColumnSchemaCollection();
+	
+	for (int i = 0; i < columns.Count; i++)
+	{
+		if (!ColumnIsExcludedOrReadOnly(columns[i])) filteredColumns.Add(columns[i]);
+	}
+	
+	return filteredColumns;
+}
+
+private Regex excludedColumnRegex = null;
+
+public bool ColumnIsExcluded(ViewColumnSchema column)
+{
+
+	if (excludedColumnRegex == null)
+	{
+		if (ExcludedColumns != null && ExcludedColumns.Count > 0)
+		{
+			string excluded = String.Empty;
+			for (int i = 0; i < ExcludedColumns.Count; i++)
+			{
+				if (ExcludedColumns[i].Trim().Length > 0)
+				{
+					excluded += "(" + Regex.Escape(ExcludedColumns[i]).Replace("\\*", ".*?") + ")|";
+				}
+			}
+			
+			if (excluded.Length > 0)
+			{
+				excluded = excluded.Substring(0, excluded.Length - 1);
+				excludedColumnRegex = new Regex(excluded, RegexOptions.IgnoreCase);
+			}
+		}
+	}
+	
+	if (excludedColumnRegex != null && excludedColumnRegex.IsMatch(column.Name)) return true;
+	
+	return false;
+}
+
+private Regex readOnlyColumnRegex = null;
+
+public bool ColumnIsReadOnly(ViewColumnSchema column)
+{
+	if (readOnlyColumnRegex == null)
+	{
+		if (ReadOnlyColumns != null && ReadOnlyColumns.Count > 0)
+		{
+			string readOnly = String.Empty;
+			for (int i = 0; i < ReadOnlyColumns.Count; i++)
+			{
+				if (ReadOnlyColumns[i].Trim().Length > 0)
+				{
+					readOnly += "(" + Regex.Escape(ReadOnlyColumns[i]).Replace("\\*", ".*?") + ")|";
+				}
+			}
+			
+			if (readOnly.Length > 0)
+			{
+				readOnly = readOnly.Substring(0, readOnly.Length - 1);
+				readOnlyColumnRegex = new Regex(readOnly, RegexOptions.IgnoreCase);
+			}
+		}
+	}
+	
+	if (readOnlyColumnRegex != null && readOnlyColumnRegex.IsMatch(column.Name)) return true;
+	
+	return false;
+}
+
+public bool ColumnIsExcludedOrReadOnly(ViewColumnSchema column)
+{
+	return ColumnIsExcluded(column) || ColumnIsReadOnly(column);
+}
+#endregion
+
+#region Procedure Naming
+public string GetInsertProcedureName()
+{
+	return String.Format("{0}[{1}Insert{2}]", GetViewOwner(), ProcedurePrefix, GetEntityName(false));
+}
+
+public string GetUpdateProcedureName()
+{
+	return String.Format("{0}[{1}Update{2}]", GetViewOwner(), ProcedurePrefix, GetEntityName(false));
+}
+
+public string GetInsertUpdateProcedureName()
+{
+	return String.Format("{0}[{1}InsertUpdate{2}]", GetViewOwner(), ProcedurePrefix, GetEntityName(false));
+}
+
+public string GetDeleteProcedureName()
+{
+	return String.Format("{0}[{1}Delete{2}]", GetViewOwner(), ProcedurePrefix, GetEntityName(false));
+}
+
+public string GetSelectProcedureName()
+{
+	return String.Format("{0}[{1}Select{2}]", GetViewOwner(), ProcedurePrefix, GetEntityName(false));
+}
+
+public string GetSelectAllProcedureName()
+{
+	return String.Format("{0}[{1}Select{2}All]", GetViewOwner(), ProcedurePrefix, GetEntityName(false)); //true
+}
+
+public string GetSelectPagedProcedureName()
+{
+	return String.Format("{0}[{1}Select{2}Paged]", GetViewOwner(), ProcedurePrefix, GetEntityName(false)); //true
+}
+
+public string GetSelectByProcedureName(ViewColumnSchemaCollection targetColumns)
+{
+	return String.Format("{0}[{1}Select{2}By{3}]", GetViewOwner(), ProcedurePrefix, GetEntityName(false), GetBySuffix(targetColumns)); //true
+}
+
+public string GetSelectDynamicProcedureName()
+{
+	return String.Format("{0}[{1}Select{2}Dynamic]", GetViewOwner(), ProcedurePrefix, GetEntityName(false)); //true
+}
+
+public string GetDeleteByProcedureName(ViewColumnSchemaCollection targetColumns)
+{
+	return String.Format("{0}[{1}Delete{2}By{3}]", GetViewOwner(), ProcedurePrefix, GetEntityName(false), GetBySuffix(targetColumns)); //true
+}
+
+public string GetDeleteDynamicProcedureName()
+{
+	return String.Format("{0}[{1}Delete{2}Dynamic]", GetViewOwner(), ProcedurePrefix, GetEntityName(false)); //true
+}
+
+public string GetEntityName(bool plural)
+{
+	string entityName = SourceView.Name;
+	
+	if (entityName.StartsWith(ViewPrefix))
+	{
+		entityName = entityName.Substring(ViewPrefix.Length);
+	}
+	
+	if (plural)
+	{
+		entityName = StringUtil.ToPlural(entityName);
+	}
+	else
+	{
+		entityName = StringUtil.ToSingular(entityName);
+	}
+	
+	return entityName;
+}
+
+public string GetBySuffix(ViewColumnSchemaCollection columns)
+{
+    System.Text.StringBuilder bySuffix = new System.Text.StringBuilder();
+	for (int i = 0; i < columns.Count; i++)
+	{
+	    if (i > 0) bySuffix.Append("And");
+	    bySuffix.Append(columns[i].Name);
+	}
+	
+	return bySuffix.ToString();
+}
+#endregion
+
+#region Template Overrides
+// Assign an appropriate file name to the output.
+public override string GetFileName()
+{
+	if (this.SourceView != null)
+	{
+		return this.SourceView.Name + "_Procedures.sql";
+	}
+	else
+	{
+		return base.GetFileName();
+	}
+}
+
+// Override the OutputFile property and assign our specific settings to it.
+[Category("2. Options")]
+[FileDialog(FileDialogType.Save, Title="Select Output File", Filter="Query Files (*.sql)|*.sql|All Files (*.*)|*.*", DefaultExtension=".sql")]
+public override string OutputFile
+{
+	get {return base.OutputFile;}
+	set {base.OutputFile = value;}
+}
+
+protected override void OnPostRender(string result) 
+{
+	if (this.AutoExecuteScript)
+	{
+		// execute the output on the same database as the source table.
+		CodeSmith.BaseTemplates.ScriptResult scriptResult = CodeSmith.BaseTemplates.ScriptUtility.ExecuteScript(this.SourceView.Database.ConnectionString, result, new System.Data.SqlClient.SqlInfoMessageEventHandler(cn_InfoMessage)); 
+		Trace.WriteLine(scriptResult.ToString());
+	}
+	
+	base.OnPostRender(result);
+}
+
+private void cn_InfoMessage(object sender, System.Data.SqlClient.SqlInfoMessageEventArgs e)
+{
+	Trace.WriteLine(e.Message);
+}
+#endregion
+
+</script>

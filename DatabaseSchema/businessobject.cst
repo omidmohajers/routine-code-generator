@@ -1,0 +1,720 @@
+﻿<%@ CodeTemplate Language="C#" TargetLanguage="C#" Description="Generates a very simple business object." %>
+<%@ Property Name="SourceTable" Type="SchemaExplorer.TableSchema" Category="Context" Description="Table that the object is based on." %>
+<%@ Property Name="NameSpace" Type="System.String" Category="Context" Description="nothing" %>
+<%@ Assembly Name="SchemaExplorer" %>
+<%@ Assembly Name="System.Data" %>
+<%@ Import Namespace="SchemaExplorer" %>
+<%@ Import Namespace="System.Data" %>
+	using System.Data;
+	using System.Data.SqlClient;
+	using PropertyValidation;
+    using System;
+using System.Collections.Generic;
+using Automation.TableProvider;
+	
+	namespace <%= NameSpace %>
+	{
+		
+	#region <%= GetClassName(SourceTable) %>
+	/// <summary>
+	/// This object represents the properties and methods of a <%= GetClassName(SourceTable) %>.
+	/// </summary>
+
+	public partial class <%= GetClassName(SourceTable) %> : System.ComponentModel.INotifyPropertyChanged, ICloneable
+	{
+		<% foreach (ColumnSchema column in SourceTable.Columns) { %>
+		<%= GetMemberVariableDeclarationStatement(column) %>
+		<% } %>
+		
+		public <%= GetClassName(SourceTable) %>()
+		{
+		}
+
+		#region Public Properties
+		
+		<% for (int i = 0; i < SourceTable.Columns.Count; i++) { %>
+		public <%= GetCSharpVariableType(SourceTable.Columns[i]) %> <%= GetPropertyName(SourceTable.Columns[i]) %>
+		{
+			get {return <%= GetMemberVariableName(SourceTable.Columns[i]) %>;}
+			set 
+			{
+				<%= GetMemberVariableName(SourceTable.Columns[i]) %> = value;
+                if (PropertyChanged != null) 
+                    PropertyChanged(this, new System.ComponentModel.PropertyChangedEventArgs("<%= GetPropertyName(SourceTable.Columns[i]) %>")); 
+			}
+		}
+		<% if (i < SourceTable.Columns.Count - 1) Response.Write("\r\n"); %>		
+		<% } %>
+		
+		#endregion
+		
+		#region Public Methods
+
+		public List<ValidationResult> Validate()
+		{
+			List<ValidationResult> errors = new List<ValidationResult>();
+			
+			return errors;
+		}
+
+		public List<ValidationResult> DeepValidate()
+		{
+			List<ValidationResult> errors = new List<ValidationResult>();
+			
+			return errors;
+		}
+		
+		public <%= GetClassName(SourceTable) %> TypedClone()
+		{
+			return (<%= GetClassName(SourceTable) %>)((ICloneable)this).Clone();
+		}
+		
+		public void CopyData(<%= GetClassName(SourceTable) %> value)
+		{
+			<% foreach (ColumnSchema column in SourceTable.Columns) { %>
+			this.<%= GetPropertyName(column) %> = value.<%= GetPropertyName(column) %>;
+			<% } %>		
+		}
+		
+		#endregion Public Methods
+		
+		#region Private Methods
+		
+		#endregion Private Methods	
+        
+		#region INotifyPropertyChanged Members
+
+        public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
+
+        #endregion
+
+        #region ICloneable Members
+
+        object ICloneable.Clone()
+        {
+			<%= GetClassName(SourceTable) %> obj = new <%= GetClassName(SourceTable) %>();
+			
+			<% foreach (ColumnSchema column in SourceTable.Columns) { %>
+			obj.<%= GetPropertyName(column) %> = this.<%= GetPropertyName(column) %>;
+			<% } %>
+			
+			return obj;
+        }
+
+        #endregion
+	}
+	#endregion
+
+	//***********************************************************************************************
+	
+	#region <%= GetClassName(SourceTable) %> Data Provider
+	namespace DataAccess
+	{
+
+	internal static class <%= GetClassName(SourceTable) %>DataProvider
+	{
+		#region Insert Methods
+		
+		public static long Insert(<%= GetClassName(SourceTable) %> value)
+		{
+			SqlCommand command = new SqlCommand("SP_Insert<%= GetClassName(SourceTable) %>",Database.Connection);
+			command.CommandType = CommandType.StoredProcedure;
+			
+			<% foreach (ColumnSchema column in SourceTable.NonPrimaryKeyColumns) { %>
+			<% if(SourceTable.ForeignKeyColumns.IndexOf(column) > -1 && GetCSharpVariableType(column) == "int"){ %>
+			if(value.<%= GetPropertyName(column) %> != -1)
+			<% } %>
+			command.Parameters.AddWithValue("@<%= column.Name %>", value.<%= GetPropertyName(column) %>);
+			<% } %>
+			
+			command.Parameters.Add("@<%= SourceTable.PrimaryKey.MemberColumns[0].Name %>", SqlDbType.BigInt).Direction = ParameterDirection.Output;
+			
+			Database.Connection.Open();
+			try
+			{
+				GeneralTable.ExecuteCommand(command);
+				return long.Parse(command.Parameters["@<%= SourceTable.PrimaryKey.MemberColumns[0].Name %>"].Value.ToString());
+			}
+			finally
+			{
+				Database.Connection.Close();
+			}
+		}
+		
+		#endregion Insert Methods
+		
+		#region Update Methods
+		
+		public static void Update(<%= GetClassName(SourceTable) %> value)
+		{
+			SqlCommand command = new SqlCommand("SP_Update<%= GetClassName(SourceTable) %>",Database.Connection);
+			command.CommandType = CommandType.StoredProcedure;
+			
+			<% foreach (ColumnSchema column in SourceTable.Columns) { %>
+			<% if(SourceTable.ForeignKeyColumns.IndexOf(column) > -1 && GetCSharpVariableType(column) == "int") {%>
+			if(value.<%= GetPropertyName(column) %> != -1)
+			<% } %>
+			command.Parameters.AddWithValue("@<%= column.Name %>", value.<%= GetPropertyName(column) %>);
+			<% } %>
+			
+			Database.Connection.Open();
+			try
+			{
+				GeneralTable.ExecuteCommand(command);
+			}
+			finally
+			{
+				Database.Connection.Close();
+			}
+		}
+
+		#endregion Insert Methods
+
+		#region Delete Methods
+		
+		public static void Delete(<%= GetClassName(SourceTable) %> value)
+		{
+			SqlCommand command = new SqlCommand("SP_Delete<%= GetClassName(SourceTable) %>",Database.Connection);
+			command.CommandType = CommandType.StoredProcedure;
+			
+			command.Parameters.AddWithValue("@<%= SourceTable.PrimaryKey.MemberColumns[0].Name %>", value.<%= GetPropertyName(SourceTable.PrimaryKey.MemberColumns[0]) %>);
+			
+			Database.Connection.Open();
+			try
+			{
+				GeneralTable.ExecuteCommand(command);
+			}
+			finally
+			{
+				Database.Connection.Close();
+			}
+		}
+		
+		public static void Delete(long id)
+		{
+			SqlCommand command = new SqlCommand("SP_Delete<%= GetClassName(SourceTable) %>",Database.Connection);
+			command.CommandType = CommandType.StoredProcedure;
+			
+			command.Parameters.AddWithValue("@<%= SourceTable.PrimaryKey.MemberColumns[0].Name %>", id);
+			
+			Database.Connection.Open();
+			try
+			{
+				GeneralTable.ExecuteCommand(command);
+			}
+			finally
+			{
+				Database.Connection.Close();
+			}
+		}
+
+		public static void DeleteDynamic(string whereCondition)
+		{
+			SqlCommand command = new SqlCommand("SP_Delete<%= GetClassName(SourceTable) %>Dynamic",Database.Connection);
+			command.CommandType = CommandType.StoredProcedure;
+			
+			command.Parameters.AddWithValue("@WhereCondition", whereCondition);
+			
+			Database.Connection.Open();
+			try
+			{
+				GeneralTable.ExecuteCommand(command);
+			}
+			finally
+			{
+				Database.Connection.Close();
+			}
+		}
+		
+			#region Delete By Foreign Keys
+		
+		<% foreach(ColumnSchema column in SourceTable.ForeignKeyColumns) { %>
+		public static void DeleteBy<%= GetPropertyName(column) %>(<%= GetCSharpVariableType(column) %> id)
+		{
+			SqlCommand command = new SqlCommand("SP_Delete<%= GetClassName(SourceTable) %>By<%= column.Name %>",Database.Connection);
+			command.CommandType = CommandType.StoredProcedure;
+			
+			command.Parameters.AddWithValue("@<%= column.Name %>", id);
+			
+			Database.Connection.Open();
+			try
+			{
+				GeneralTable.ExecuteCommand(command);
+			}
+			finally
+			{
+				Database.Connection.Close();
+			}
+		}		
+		
+		<% } %>
+			#endregion Delete By Foreign Keys
+			
+		#endregion Delete Methods
+		
+		#region Helper Methods
+		
+		private static <%= GetClassName(SourceTable) %> GetObjectFromDataReader(SqlDataReader reader)
+		{
+			<%= GetClassName(SourceTable) %> value = new <%= GetClassName(SourceTable) %>();
+			
+			if (reader != null && !reader.IsClosed)
+			{
+				<% for (int i = 0; i < SourceTable.Columns.Count; i++) { %>
+				<%= MyGetReaderAssignmentStatement(SourceTable.Columns[i], i) %>
+				<% } %>
+				
+				return value;
+			}
+			
+			return null;
+		}
+		
+		#endregion Helper Methods
+		
+		#region Select Methods
+
+		public static <%= GetClassName(SourceTable) %> Get(long id)
+		{
+			SqlCommand command = new SqlCommand("SP_Select<%= GetClassName(SourceTable) %>",Database.Connection);
+			command.CommandType = CommandType.StoredProcedure;
+			
+			command.Parameters.AddWithValue("@<%= SourceTable.PrimaryKey.MemberColumns[0].Name %>", id);
+			
+			Database.Connection.Open();
+			try
+			{
+				SqlDataReader reader = command.ExecuteReader();
+			
+				<%= GetClassName(SourceTable) %> value = null;
+			
+				if (reader.Read()) 
+					value = GetObjectFromDataReader(reader);
+
+				if (!reader.IsClosed) 
+					reader.Close();			
+
+				return value;
+			}
+			finally
+			{
+				Database.Connection.Close();
+			}
+		}
+
+		public static List<%= "<"+GetClassName(SourceTable)+">" %> List()
+		{
+			SqlCommand command = new SqlCommand("SP_Select<%= GetClassName(SourceTable) %>All",Database.Connection);
+			command.CommandType = CommandType.StoredProcedure;
+
+			List<%= "<"+GetClassName(SourceTable)+">" %> values = new List<%= "<"+GetClassName(SourceTable)+">" %>();
+			
+			Database.Connection.Open();
+			try
+			{
+				SqlDataReader reader = command.ExecuteReader();
+				
+				while(reader.Read())
+				{
+					<%= GetClassName(SourceTable) %> value = GetObjectFromDataReader(reader);
+					values.Add(value);
+				}
+				
+				if (!reader.IsClosed) 
+					reader.Close();
+					
+				return values;
+			}
+			finally
+			{
+				Database.Connection.Close();
+			}
+		}
+
+		public static List<%= "<"+GetClassName(SourceTable)+">" %> ListDynamic(string whereCondition,string orderByExpression)
+		{
+			SqlCommand command = new SqlCommand("SP_Select<%= GetClassName(SourceTable) %>Dynamic",Database.Connection);
+			command.CommandType = CommandType.StoredProcedure;
+			
+			command.Parameters.AddWithValue("@WhereCondition", whereCondition);
+			command.Parameters.AddWithValue("@OrderByExpression", orderByExpression);
+			
+			List<%= "<"+GetClassName(SourceTable)+">" %> values = new List<%= "<"+GetClassName(SourceTable)+">" %>();
+			
+			Database.Connection.Open();
+			try
+			{
+				SqlDataReader reader = command.ExecuteReader();
+	
+				while(reader.Read())
+				{
+					<%= GetClassName(SourceTable) %> value = GetObjectFromDataReader(reader);
+					values.Add(value);
+				}
+				
+				if (!reader.IsClosed) 
+					reader.Close();
+					
+				return values;	
+			}
+			finally
+			{
+				Database.Connection.Close();
+			}
+		}
+		
+		public static List<%= "<"+GetClassName(SourceTable)+">" %> ListDynamic(string whereCondition)
+		{
+			SqlCommand command = new SqlCommand("SP_Select<%= GetClassName(SourceTable) %>Dynamic",Database.Connection);
+			command.CommandType = CommandType.StoredProcedure;
+			
+			command.Parameters.AddWithValue("@WhereCondition", whereCondition);
+			
+			List<%= "<"+GetClassName(SourceTable)+">" %> values = new List<%= "<"+GetClassName(SourceTable)+">" %>();
+			
+			Database.Connection.Open();
+			try
+			{
+				SqlDataReader reader = command.ExecuteReader();
+	
+				while(reader.Read())
+				{
+					<%= GetClassName(SourceTable) %> value = GetObjectFromDataReader(reader);
+					values.Add(value);
+				}
+				
+				if (!reader.IsClosed) 
+					reader.Close();
+					
+				return values;	
+			}
+			finally
+			{
+				Database.Connection.Close();
+			}
+		}
+
+			#region List By Foreign Keys
+		
+		<% foreach(ColumnSchema column in SourceTable.ForeignKeyColumns) { %>
+		
+		public static List<%= "<"+GetClassName(SourceTable)+">" %> ListBy<%= GetPropertyName(column) %>(<%= GetCSharpVariableType(column) %> id)
+		{
+			SqlCommand command = new SqlCommand("SP_Select<%= GetClassName(SourceTable) %>By<%= GetPropertyName(column) %>",Database.Connection);
+			command.CommandType = CommandType.StoredProcedure;
+			
+			command.Parameters.AddWithValue("@<%= column.Name %>", id);
+			
+			List<%= "<"+GetClassName(SourceTable)+">" %> values = new List<%= "<"+GetClassName(SourceTable)+">" %>();
+			
+			Database.Connection.Open();
+			try
+			{
+				SqlDataReader reader = command.ExecuteReader();
+	
+				while(reader.Read())
+				{
+					<%= GetClassName(SourceTable) %> value = GetObjectFromDataReader(reader);
+					values.Add(value);
+				}
+				
+				if (!reader.IsClosed) 
+					reader.Close();
+					
+				return values;	
+			}
+			finally
+			{
+				Database.Connection.Close();
+			}
+		}
+
+		<% } %>
+
+			#endregion List By Foreign Keys
+
+		#endregion Select Methods
+
+	}
+	
+	}
+	#endregion <%= GetClassName(SourceTable) %> Data Provider
+	
+	} // end namespace
+	
+	
+<script runat="template">
+public string GetMemberVariableDeclarationStatement(ColumnSchema column)
+{
+	return GetMemberVariableDeclarationStatement("protected", column);
+}
+
+public string GetMemberVariableDeclarationStatement(string protectionLevel, ColumnSchema column)
+{
+	string statement = protectionLevel + " ";
+	statement += GetCSharpVariableType(column) + " " + GetMemberVariableName(column);
+	
+	string defaultValue = GetMemberVariableDefaultValue(column);
+	if (defaultValue != "")
+	{
+		statement += " = " + defaultValue;
+	}
+	else if(SourceTable.ForeignKeyColumns.IndexOf(column) > -1 && GetCSharpVariableType(column)=="int")
+	{
+		statement += " = -1";
+	}
+	
+	statement += ";";
+	
+	return statement;
+}
+
+public string MyGetReaderAssignmentStatement(ColumnSchema column, int index)
+{
+	string statement = "if (!reader.IsDBNull(reader.GetOrdinal(\"" + column.Name + "\"))) ";
+	statement += "value."+GetPropertyName(column) + " = ";
+	
+	//if (column.Name.EndsWith("TypeCode")) statement += "(" + column.Name + ")";
+	
+	statement += "reader." + GetReaderMethod(column) + "(reader.GetOrdinal(\"" + column.Name + "\"));";
+	
+//	if(SourceTable.ForeignKeyColumns.IndexOf(column) > -1 && GetCSharpVariableType(column) == "int")
+//		statement += "  else value."+GetPropertyName(column) + " = -1;";
+	
+	return statement;
+}
+
+public string GetReaderAssignmentStatement(ColumnSchema column, int index)
+{
+	string statement = "if (!reader.IsDBNull(" + index.ToString() + ")) ";
+	statement += GetMemberVariableName(column) + " = ";
+	
+	if (column.Name.EndsWith("TypeCode")) statement += "(" + column.Name + ")";
+	
+	statement += "reader." + GetReaderMethod(column) + "(" + index.ToString() + ");";
+	
+	return statement;
+}
+
+public string GetCamelCaseName(string value)
+{
+	return value.Substring(0, 1).ToLower() + value.Substring(1);
+}
+
+public string GetMemberVariableName(ColumnSchema column)
+{
+	string propertyName = GetPropertyName(column);
+	string memberVariableName = "_" + GetCamelCaseName(propertyName);
+	
+	return memberVariableName;
+}
+
+public string GetPropertyName(ColumnSchema column)
+{
+	string propertyName = column.Name;
+	
+	//if (propertyName == column.Table.Name + "Name") return "Name";
+	//if (propertyName == column.Table.Name + "Description") return "Description";
+	
+	//if (propertyName.EndsWith("TypeCode")) propertyName = propertyName.Substring(0, propertyName.Length - 4);
+	
+	return propertyName;
+}
+		
+public string GetMemberVariableDefaultValue(ColumnSchema column)
+{
+	switch (column.DataType)
+	{
+		case DbType.Guid:
+		{
+			return "Guid.Empty";
+		}
+		case DbType.AnsiString:
+		case DbType.AnsiStringFixedLength:
+		case DbType.String:
+		case DbType.StringFixedLength:
+		{
+			return "String.Empty";
+		}
+		default:
+		{
+			return "";
+		}
+	}
+}
+
+public string GetCSharpVariableType(ColumnSchema column)
+{
+	if (column.Name.EndsWith("TypeCode")) return column.Name;
+	
+	switch (column.DataType)
+	{
+		case DbType.AnsiString: return "string";
+		case DbType.AnsiStringFixedLength: return "string";
+		case DbType.Binary: return "byte[]";
+		case DbType.Boolean: return "bool";
+		case DbType.Byte: return "byte";
+		case DbType.Currency: return "decimal";
+		case DbType.Date: return "DateTime";
+		case DbType.DateTime: return "DateTime";
+		case DbType.Decimal: return "decimal";
+		case DbType.Double: return "double";
+		case DbType.Guid: return "Guid";
+		case DbType.Int16: return "short";
+		case DbType.Int32: return "int";
+		case DbType.Int64: return "long";
+		case DbType.Object: return "object";
+		case DbType.SByte: return "sbyte";
+		case DbType.Single: return "float";
+		case DbType.String: return "string";
+		case DbType.StringFixedLength: return "string";
+		case DbType.Time: return "TimeSpan";
+		case DbType.UInt16: return "ushort";
+		case DbType.UInt32: return "uint";
+		case DbType.UInt64: return "ulong";
+		case DbType.VarNumeric: return "decimal";
+		default:
+		{
+			return "__UNKNOWN__" + column.NativeType;
+		}
+	}
+}
+
+public string GetReaderMethod(ColumnSchema column)
+{
+	switch (column.DataType)
+	{
+		case DbType.Byte:
+		{
+			return "GetByte";
+		}
+		case DbType.Int16:
+		{
+			return "GetInt16";
+		}
+		case DbType.Int32:
+		{
+			return "GetInt32";
+		}
+		case DbType.Int64:
+		{
+			return "GetInt64";
+		}
+		case DbType.AnsiStringFixedLength:
+		case DbType.AnsiString:
+		case DbType.String:
+		case DbType.StringFixedLength:
+		{
+			return "GetString";
+		}
+		case DbType.Boolean:
+		{
+			return "GetBoolean";
+		}
+		case DbType.Guid:
+		{
+			return "GetGuid";
+		}
+		case DbType.Currency:
+		case DbType.Decimal:
+		{
+			return "GetDecimal";
+		}
+		case DbType.DateTime:
+		case DbType.Date:
+		{
+			return "GetDateTime";
+		}
+		case DbType.Binary:
+		{
+			return "GetBytes";
+		}
+		case DbType.Double:
+		{
+			return "GetDouble";
+		}
+		default:
+		{
+			return "__SQL__" + column.DataType;
+		}
+	}
+}
+
+public string GetClassName(TableSchema table)
+{
+	string name = "";
+	if (table.Name.EndsWith("s"))
+	{
+		name= table.Name.Substring(0, table.Name.Length - 1);
+	}
+	else if (table.Name.EndsWith("ies"))
+	{
+		name= table.Name.Substring(0, table.Name.Length - 3)+"y";
+	}
+	else
+	{
+		name= table.Name;
+	}
+	if(name.StartsWith("PC_"))
+		name= name.Substring(3,name.Length-3);
+	return name;	
+}
+
+public string GetSqlDbType(ColumnSchema column)
+{
+	switch (column.NativeType)
+	{
+		case "bigint": return "BigInt";
+		case "binary": return "Binary";
+		case "bit": return "Bit";
+		case "char": return "Char";
+		case "datetime": return "DateTime";
+		case "decimal": return "Decimal";
+		case "float": return "Float";
+		case "image": return "Image";
+		case "int": return "Int";
+		case "money": return "Money";
+		case "nchar": return "NChar";
+		case "ntext": return "NText";
+		case "numeric": return "Decimal";
+		case "nvarchar": return "NVarChar";
+		case "real": return "Real";
+		case "smalldatetime": return "SmallDateTime";
+		case "smallint": return "SmallInt";
+		case "smallmoney": return "SmallMoney";
+		case "sql_variant": return "Variant";
+		case "sysname": return "NChar";
+		case "text": return "Text";
+		case "timestamp": return "Timestamp";
+		case "tinyint": return "TinyInt";
+		case "uniqueidentifier": return "UniqueIdentifier";
+		case "varbinary": return "VarBinary";
+		case "varchar": return "VarChar";
+		default: return "__UNKNOWN__" + column.NativeType;
+	}
+}
+
+public string GetPrimaryKeyType(TableSchema table)
+{
+	if (table.PrimaryKey != null)
+	{
+		if (table.PrimaryKey.MemberColumns.Count == 1)
+		{
+			return GetCSharpVariableType(table.PrimaryKey.MemberColumns[0]);
+		}
+		else
+		{
+			throw new ApplicationException("This template will not work on primary keys with more than one member column.");
+		}
+	}
+	else
+	{
+		throw new ApplicationException("This template will only work on tables with a primary key.");
+	}
+}
+
+public override string GetFileName()
+{
+	return this.GetClassName(this.SourceTable) + ".cs";
+}
+</script>
